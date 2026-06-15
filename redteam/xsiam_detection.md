@@ -1,7 +1,7 @@
 # Cortex XDR/XSIAM 탐지 결과 및 XQL 쿼리
 
 > **환경**: Palo Alto Cortex XDR · XSIAM 연동  
-> **에이전트**: Ubuntu 14.04 (song-test-old-ubuntu), Windows 11 (SONG-TEST-OC) 양쪽 설치  
+> **에이전트**: Ubuntu 14.04 (<UBUNTU_HOSTNAME>), Windows 11 (<WINDOWS_HOSTNAME>) 양쪽 설치  
 > **테스트 일자**: 2026-06
 
 ---
@@ -22,7 +22,7 @@
 
 ## 🚨 주요 Alert 목록
 
-### Ubuntu (Incident #266, #972, #1623 — song-test-old-ubuntu)
+### Ubuntu (Incident #266, #972, #1623 — <UBUNTU_HOSTNAME>)
 
 | 인시던트 | 심각도 | MITRE | 설명 |
 |----------|--------|-------|------|
@@ -30,7 +30,7 @@
 | #972 | HIGH | T1059.004, T1574.006, T1072 | Script Activity — Unix Shell 실행, Dynamic Linker Hijacking |
 | #1623 | HIGH | T1059, T1053.003, T1574.006 | Local Analysis Malware — Cron 백도어, LD_PRELOAD |
 
-### Windows (Case #272 — SONG-TEST-OC, 111 issues)
+### Windows (Case #272 — <WINDOWS_HOSTNAME>, 111 issues)
 
 | 탐지 범주 | MITRE | 설명 |
 |----------|-------|------|

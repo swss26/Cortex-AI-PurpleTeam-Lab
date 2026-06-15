@@ -1,8 +1,8 @@
 # Ubuntu 공격 체인 — 상세 분석
 
 > **환경**: Ubuntu 14.04 LTS · Cortex XDR 에이전트 설치  
-> **호스트명**: `song-test-old-ubuntu` / `172.16.157.190`  
-> **공격자 (Kali)**: `172.16.157.177`  
+> **호스트명**: `<UBUNTU_HOSTNAME>` / `<UBUNTU_IP>`  
+> **공격자 (Kali)**: `<KALI_IP>`  
 > **목표**: 초기 접근 → 루트 권한 획득 → 후속 공격 6개 브랜치
 
 ---
