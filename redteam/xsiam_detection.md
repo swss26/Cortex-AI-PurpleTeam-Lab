@@ -1,49 +1,45 @@
 # Cortex XDR/XSIAM 탐지 결과 및 XQL 쿼리
 
 > **환경**: Palo Alto Cortex XDR · XSIAM 연동  
-> **에이전트**: Ubuntu 22.04, Windows 10/11 양쪽 설치
+> **에이전트**: Ubuntu 14.04 (song-test-old-ubuntu), Windows 11 (SONG-TEST-OC) 양쪽 설치  
+> **테스트 일자**: 2026-06
 
 ---
 
-## 📊 전체 탐지 통계
+## 📊 전체 탐지 통계 (실제 테스트 결과)
 
-| 분류 | Ubuntu | Windows | 합계 |
-|------|--------|---------|------|
-| 탐지된 공격 수 | 8/10 | 9/11 | 17/21 |
-| 차단(BLOCK) | 5 | 6 | 11 |
-| 알림(ALERT) | 3 | 3 | 6 |
-| 미탐(MISS) | 2 | 2 | 4 |
+| 분류 | Ubuntu | Windows |
+|------|--------|---------|
+| XSIAM 알림(Alert) 수 | 1 | 54 |
+| XSIAM Case | Incident #266, #972, #1623 | **Case #272** (111 issues, score 97/100) |
+| 실제 차단(PREVENT) | 0 | 3 (SAM dump, LSA secrets, DNS C2) |
+| Case 상태 | resolved_true_positive | resolved_true_positive |
+
+> **Windows Case #272**: "SYNC - Credential Gathering" 외 110개 이슈  
+> MITRE 커버리지: T1003.001/002, T1059.001, T1218.005/010/011, T1053, T1021, T1134
 
 ---
 
 ## 🚨 주요 Alert 목록
 
-### Ubuntu
+### Ubuntu (Incident #266, #972, #1623 — song-test-old-ubuntu)
 
-| Alert ID | 심각도 | MITRE | 설명 |
+| 인시던트 | 심각도 | MITRE | 설명 |
 |----------|--------|-------|------|
-| UBNT-001 | HIGH | T1110.001 | SSH Brute Force — 10회 이상 로그인 실패 탐지 |
-| UBNT-002 | CRITICAL | T1548.001 | SUID bash 실행 — /bin/bash -p 탐지 |
-| UBNT-003 | HIGH | T1003.008 | /etc/shadow 직접 접근 탐지 |
-| UBNT-004 | CRITICAL | T1053.003 | /etc/crontab 수정 탐지 |
-| UBNT-005 | HIGH | T1059.004 | /dev/tcp 리버스쉘 탐지 |
-| UBNT-006 | MEDIUM | T1005 | 대량 파일 아카이빙 탐지 (tar) |
-| UBNT-007 | HIGH | T1098.004 | authorized_keys 수정 탐지 |
-| UBNT-008 | LOW | T1218 | find를 이용한 대량 파일 접근 |
+| #266 | HIGH | T1059.004, T1003.008, T1574, T1190 | Local Threat Detected — www-data 통한 초기접근, /etc/shadow 접근 |
+| #972 | HIGH | T1059.004, T1574.006, T1072 | Script Activity — Unix Shell 실행, Dynamic Linker Hijacking |
+| #1623 | HIGH | T1059, T1053.003, T1574.006 | Local Analysis Malware — Cron 백도어, LD_PRELOAD |
 
-### Windows
+### Windows (Case #272 — SONG-TEST-OC, 111 issues)
 
-| Alert ID | 심각도 | MITRE | 설명 |
-|----------|--------|-------|------|
-| WIN-001 | HIGH | T1110.001 | WinRM Brute Force 탐지 |
-| WIN-002 | CRITICAL | T1562.001 | AMSI 패치 시도 — AmsiInitFailed 메모리 수정 |
-| WIN-003 | CRITICAL | T1003.001 | Mimikatz 시그니처 탐지 |
-| WIN-004 | CRITICAL | T1003.001 | LSASS 프로세스 메모리 접근 |
-| WIN-005 | HIGH | T1547.001 | Run 레지스트리 키 생성 |
-| WIN-006 | HIGH | T1543.003 | 신규 서비스 등록 (BackdoorSvc) |
-| WIN-007 | HIGH | T1550.002 | Pass-the-Hash 시도 탐지 |
-| WIN-008 | MEDIUM | T1218 | certutil 원격 다운로드 |
-| WIN-009 | HIGH | T1059.001 | Encoded PowerShell 명령 실행 |
+| 탐지 범주 | MITRE | 설명 |
+|----------|-------|------|
+| Credential Access | T1003.001/002/004/005 | SAM 하이브 덤프 · LSA Secrets · LSASS 접근 (일부 차단) |
+| Execution | T1059.001, T1569.002 | PowerShell AMSI 우회 · 서비스 실행 |
+| Defense Evasion | T1218.005/010/011 | mshta · regsvr32 · rundll32 (Squiblydoo) |
+| Persistence | T1053, T1547, T1543 | 스케줄 태스크 · Run 키 · 서비스 등록 · WMI 이벤트 |
+| Lateral Movement | T1021.002, T1550.002 | SMB/WinRM · Pass-the-Hash |
+| C2 / Exfil | T1102.002, T1048 | DNS 터널링 (telemetry.windows-cdn.net) · HTTP POST |
 
 ---
 
